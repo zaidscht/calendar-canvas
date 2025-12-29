@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f766e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>عداد التقويم</title>
+
+<link rel="manifest" href="manifest.json">
+
+<style>
+  :root{
+    --num-fill:#0f766e;
+    --num-stroke:#ffffff;
+    --shadow: rgba(0,0,0,.25);
+    --ui:#0f766e;
+
+    /* تموضع اليوم/التاريخ (px) */
+    --day-x: 0px; --day-y: 0px;
+    --date-x: 0px; --date-y: 0px;
+
+    /* تموضع الأرقام (% offset) */
+    --nox: 0; --noy: 0;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:#000;
+    font-family: Tahoma, Arial, sans-serif;
+    color:#fff;
+    overflow:hidden; /* تجربة تطبيق */
+  }
+
+  /* شاشة العرض */
+  .app{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+  }
+  .viewport{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .story{
+    width:min(100vw, 420px);
+    height:auto;
+    aspect-ratio:1080/1920;
+    background:#fff;
+    position:relative;
+    overflow:hidden;
+    border-radius:16px;
+  }
+  .story img{width:100%;height:100%;object-fit:cover;display:block}
+
+  .num{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    font-size:44px;
+    line-height:1;
+    font-weight:900;
+    color:var(--num-fill);
+    -webkit-text-stroke:1px var(--num-stroke);
+    text-shadow:0 2px 8px var(--shadow);
+    user-select:none;
+    pointer-events:none;
+    font-variant-numeric: tabular-nums;
+}
+
+  .day-circle{
+    position:absolute;
+    left:50%;
+    top:12.3%;
+    transform:translate(-50%,-50%) translate(var(--day-x), var(--day-y));
+    background:transparent;
+    box-shadow:none;
+    width:auto;
+    height:auto;
+    padding:0;
+    color:#ffffff;
+    font-weight:900;
+    font-size:34px;
+    -webkit-text-stroke:1px #0f766e;
+    text-shadow:0 2px 6px rgba(0,0,0,.35);
+    user-select:none;
+}
+  .date-row{
+    position:absolute;
+    left:50%;
+    top:17.0%;
+    transform:translate(-50%,-50%) translate(var(--date-x), var(--date-y));
+    display:flex;align-items:center;gap:14px;
+    color:#ffffff;font-size:26px;font-weight:900;
+    text-shadow:0 2px 8px rgba(0,0,0,.35);
+    white-space:nowrap; user-select:none;
+  }
+  .date-row .sep{opacity:.85}
+
+  .handle{
+    position:absolute;
+    left:50%;
+    bottom:6%;
+    transform:translate(-50%,-50%);
+    font-weight:900;font-size:22px;color:#0f766e;
+    -webkit-text-stroke:1px #fff;
+    text-shadow:0 2px 8px rgba(0,0,0,.25);
+    user-select:none;pointer-events:none;
+  }
+
+  .hidden-date .day-circle,
+  .hidden-date .date-row{display:none}
+
+  /* لوحة تحكم سفلية (Bottom Sheet) */
+  .sheet{
+    position:fixed;
+    left:0; right:0;
+    bottom:0;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    background:rgba(0,0,0,.35);
+    border-top:1px solid rgba(255,255,255,.10);
+    backdrop-filter: blur(4px);
+    max-height:60vh;
+    overflow:auto;
+  }
+  .sheet.collapsed{background:transparent;backdrop-filter:none;border-top:0;}
+  .sheet.collapsed .panel{display:none;}
+  .sheet-header{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .pill{
+    display:flex; gap:8px; align-items:center;
+    padding:10px 12px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);
+    font-weight:900;
+  }
+  .btn{
+    border:0;
+    padding:12px 14px;
+    border-radius:14px;
+    font-weight:900;
+    color:#fff;
+    background:var(--ui);
+    cursor:pointer;
+  }
+  .btn.gray{background:#2b2b2b}
+  .panel{
+    margin-top:10px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px;
+  }
+  .field{
+    display:flex; flex-direction:column; gap:6px;
+    padding:10px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+  }
+  .field label{font-size:12px;opacity:.9;font-weight:900}
+  .field input{
+    padding:12px 12px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.18);
+    color:#fff;
+    outline:none;
+    font-weight:900;
+    text-align:center;
+  }
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+
+  .sheet.collapsed .sheet-header{
+    justify-content:flex-end;
+    padding-bottom:0;
+  }
+  .sheet.collapsed .pill{display:none;}
+  .sheet.collapsed #btnToggle{display:none;}
+
+  .toast{
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:110px;
+    background:rgba(0,0,0,.75);
+    border:1px solid rgba(255,255,255,.14);
+    padding:10px 12px;
+    border-radius:999px;
+    font-weight:900;
+    font-size:12px;
+    display:none;
+  }
+
+  /* Canvas مخفي للتصدير */
+  canvas{display:none;}
+
+  /* زر PNG عائم (دائم الظهور) */
+  #btnPNG{
+    position:fixed;
+    right:16px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    z-index: 9999;
+    box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  }
+
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="viewport">
+    <div class="story" id="preview">
+      <img id="bg" src="assets/template.jpg" alt="template">
+
+      <div class="day-circle" id="dayName">الاثنين</div>
+
+      <div class="date-row" id="dateRow">
+        <span id="gregorian"></span>
+        <span class="sep">|</span>
+        <span id="hijri"></span>
+      </div>
+
+      <!-- أرقام -->
+      <div class="num" data-key="retirement" style="left:16%; top:46%;">0</div>
+      <div class="num" data-key="insurance"  style="left:38%; top:46%;">0</div>
+      <div class="num" data-key="developed"  style="left:60%; top:46%;">0</div>
+      <div class="num" data-key="salary"     style="left:82%; top:46%;">0</div>
+
+      <div class="num" data-key="citizen" style="left:16%; top:59%;">0</div>
+      <div class="num" data-key="rehab"   style="left:38%; top:59%;">0</div>
+      <div class="num" data-key="housing" style="left:60%; top:59%;">0</div>
+      <div class="num" data-key="saned"   style="left:82%; top:59%;">0</div>
+
+      <div class="num" data-key="ramadan"       style="left:16%; top:72%;">0</div>
+      <div class="num" data-key="midyear_bonus" style="left:38%; top:72%;">0</div>
+      <div class="num" data-key="agri"          style="left:60%; top:72%;">0</div>
+      <div class="num" data-key="hafiz"         style="left:82%; top:72%;">0</div>
+
+      <div class="handle" id="handlePreview">@30300</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="sheet collapsed" id="sheet">
+    <div class="sheet-header">
+      <div class="pill">عداد التقويم</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn gray" id="btnToggle">إخفاء/إظهار التاريخ</button>
+        <button class="btn gray" id="btnPanel">الإعدادات</button>
+        <button class="btn" id="btnPNG">حفظ PNG</button>
+      </div>
+    </div>
+
+    <div class="panel" id="panel">
+      <div class="field">
+        <label>لون الأرقام (HEX)</label>
+        <input id="fill" value="#0f766e" class="mono" inputmode="text">
+      </div>
+      <div class="field">
+        <label>حدّ الأرقام (HEX)</label>
+        <input id="stroke" value="#ffffff" class="mono" inputmode="text">
+      </div>
+
+      <div class="field">
+        <label>إزاحة الأرقام X% (مثال: 0.5)</label>
+        <input id="offsetX" value="0" class="mono" inputmode="decimal">
+      </div>
+      <div class="field">
+        <label>إزاحة الأرقام Y% (مثال: -0.3)</label>
+        <input id="offsetY" value="0" class="mono" inputmode="decimal">
+      </div>
+
+      <div class="field">
+        <label>إزاحة اليوم Xpx</label>
+        <input id="dayX" value="0" class="mono" inputmode="numeric">
+      </div>
+      <div class="field">
+        <label>إزاحة اليوم Ypx</label>
+        <input id="dayY" value="0" class="mono" inputmode="numeric">
+      </div>
+
+      <div class="field">
+        <label>إزاحة التاريخ Xpx</label>
+        <input id="dateX" value="0" class="mono" inputmode="numeric">
+      </div>
+      <div class="field">
+        <label>إزاحة التاريخ Ypx</label>
+        <input id="dateY" value="0" class="mono" inputmode="numeric">
+      </div>
+
+      <div class="field" style="grid-column:1/-1">
+        <label>الحساب</label>
+        <input id="handleText" value="30300" class="mono" inputmode="text">
+      </div>
+    </div>
+  </div>
+
+  <canvas id="out" width="1080" height="1920"></canvas>
+</div>
+
+<script>
+const PAY_DAYS = {
+  retirement: 4, insurance: 4, developed: 28, salary: 27,
+  citizen: 10, rehab: 26, housing: 24, saned: 4,
+  ramadan: 1, midyear_bonus: 12, agri: 7, hafiz: 8,
+};
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.style.display='block';
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>t.style.display='none', 1600);
+}
+
+function daysLeftToDayOfMonth(day){
+  const now=new Date();
+  const today=new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let target=new Date(today.getFullYear(), today.getMonth(), day);
+  if(today>target) target=new Date(today.getFullYear(), today.getMonth()+1, day);
+  return Math.ceil((target-today)/(1000*60*60*24));
+}
+function buildTargets(){
+  const t={};
+  Object.keys(PAY_DAYS).forEach(k=>t[k]=daysLeftToDayOfMonth(PAY_DAYS[k]));
+  return t;
+}
+function animateNumbers(targets){
+  document.querySelectorAll('.num').forEach(el=>{
+    const key=el.dataset.key;
+    const target=Number(targets[key]??0);
+    const start=performance.now();
+    const duration=Math.min(900, 300 + target*18);
+    const ease=(x)=>1-Math.pow(1-x,3);
+    function frame(ts){
+      const p=Math.min(1,(ts-start)/duration);
+      el.textContent=Math.round(ease(p)*target);
+      if(p<1) requestAnimationFrame(frame);
+      else el.textContent=target;
+    }
+    requestAnimationFrame(frame);
+  });
+}
+function setDates(){
+  const d=new Date();
+  document.getElementById('dayName').textContent =
+    d.toLocaleDateString('ar-SA', { weekday: 'long' });
+  document.getElementById('gregorian').textContent =
+    d.toLocaleDateString('ar-SA', { day:'numeric', month:'long', year:'numeric' });
+  document.getElementById('hijri').textContent =
+    d.toLocaleDateString('ar-SA-u-ca-islamic', { day:'numeric', month:'long', year:'numeric' });
+}
+
+function restore(){
+  const ids=['fill','stroke','offsetX','offsetY','dayX','dayY','dateX','dateY','handleText'];
+  ids.forEach(id=>{
+    const v=localStorage.getItem(id);
+    if(v!==null) document.getElementById(id).value=v;
+  });
+  const hide=localStorage.getItem('hideDate');
+  if(hide==='1') document.getElementById('preview').classList.add('hidden-date');
+  const collapsed=localStorage.getItem('panelCollapsed');
+  if(collapsed===null || collapsed==='1') document.getElementById('sheet').classList.add('collapsed');
+}
+
+function apply(){
+  const fill=(document.getElementById('fill').value||'#0f766e').trim();
+  const stroke=(document.getElementById('stroke').value||'#ffffff').trim();
+  document.documentElement.style.setProperty('--num-fill', fill);
+  document.documentElement.style.setProperty('--num-stroke', stroke);
+  localStorage.setItem('fill', fill); localStorage.setItem('stroke', stroke);
+
+  const ox=parseFloat(document.getElementById('offsetX').value||'0') || 0;
+  const oy=parseFloat(document.getElementById('offsetY').value||'0') || 0;
+  document.documentElement.style.setProperty('--nox', ox);
+  document.documentElement.style.setProperty('--noy', oy);
+  localStorage.setItem('offsetX', String(ox)); localStorage.setItem('offsetY', String(oy));
+
+  const dayX=parseInt(document.getElementById('dayX').value||'0',10) || 0;
+  const dayY=parseInt(document.getElementById('dayY').value||'0',10) || 0;
+  const dateX=parseInt(document.getElementById('dateX').value||'0',10) || 0;
+  const dateY=parseInt(document.getElementById('dateY').value||'0',10) || 0;
+
+  document.documentElement.style.setProperty('--day-x', dayX+'px');
+  document.documentElement.style.setProperty('--day-y', dayY+'px');
+  document.documentElement.style.setProperty('--date-x', dateX+'px');
+  document.documentElement.style.setProperty('--date-y', dateY+'px');
+
+  localStorage.setItem('dayX', String(dayX)); localStorage.setItem('dayY', String(dayY));
+  localStorage.setItem('dateX', String(dateX)); localStorage.setItem('dateY', String(dateY));
+
+  const ht=(document.getElementById('handleText').value||'30300').trim();
+  document.getElementById('handlePreview').textContent='@'+ht;
+  localStorage.setItem('handleText', ht);
+
+  // apply offsets to numbers (percent)
+  document.querySelectorAll('.num').forEach(el=>{
+    if(!el.dataset.baseLeft){
+      el.dataset.baseLeft=el.style.left;
+      el.dataset.baseTop=el.style.top;
+    }
+    const bl=parseFloat(el.dataset.baseLeft);
+    const bt=parseFloat(el.dataset.baseTop);
+    el.style.left=(bl+ox)+'%';
+    el.style.top=(bt+oy)+'%';
+  });
+}
+
+async function renderAndDownloadPNG(targets){
+  const canvas=document.getElementById('out');
+  const ctx=canvas.getContext('2d');
+  const img=new Image();
+  img.src=document.getElementById('bg').src;
+  await new Promise((res,rej)=>{img.onload=res; img.onerror=rej;});
+
+  const cw=canvas.width, ch=canvas.height;
+  const iw=img.width, ih=img.height;
+  const scale=Math.max(cw/iw, ch/ih);
+  const dw=iw*scale, dh=ih*scale;
+  const dx=(cw-dw)/2, dy=(ch-dh)/2;
+
+  ctx.clearRect(0,0,cw,ch);
+  ctx.drawImage(img, dx, dy, dw, dh);
+
+  const fill=getComputedStyle(document.documentElement).getPropertyValue('--num-fill').trim();
+  const stroke=getComputedStyle(document.documentElement).getPropertyValue('--num-stroke').trim();
+
+  const ox=parseFloat(document.getElementById('offsetX').value||'0') || 0;
+  const oy=parseFloat(document.getElementById('offsetY').value||'0') || 0;
+  const nox=ox/100, noy=oy/100;
+
+  const P={
+    retirement:{x:0.16+nox,y:0.46+noy}, insurance:{x:0.38+nox,y:0.46+noy}, developed:{x:0.60+nox,y:0.46+noy}, salary:{x:0.82+nox,y:0.46+noy},
+    citizen:{x:0.16+nox,y:0.59+noy}, rehab:{x:0.38+nox,y:0.59+noy}, housing:{x:0.60+nox,y:0.59+noy}, saned:{x:0.82+nox,y:0.59+noy},
+    ramadan:{x:0.16+nox,y:0.72+noy}, midyear_bonus:{x:0.38+nox,y:0.72+noy}, agri:{x:0.60+nox,y:0.72+noy}, hafiz:{x:0.82+nox,y:0.72+noy},
+  };
+
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,0.25)';
+  ctx.shadowBlur=10;
+  ctx.shadowOffsetY=3;
+
+  function draw(text,x,y,size){
+    ctx.font=`900 ${size}px Tahoma, Arial, sans-serif`;
+    ctx.lineWidth=Math.max(4, Math.round(size*0.06));
+    ctx.strokeStyle=stroke;
+    ctx.fillStyle=fill;
+    ctx.strokeText(text,x,y);
+    ctx.fillText(text,x,y);
+  }
+  const baseSize=96;
+  Object.keys(P).forEach(k=>{
+    const val=String(targets[k]??0);
+    const p=P[k];
+    const x=p.x*cw, y=p.y*ch;
+    let s=baseSize;
+    if(val.length>=3) s=Math.round(baseSize*0.85);
+    draw(val,x,y,s);
+  });
+
+  // date/day
+  const preview=document.getElementById('preview');
+  const hideDate=preview.classList.contains('hidden-date');
+  if(!hideDate){
+    const dayText=document.getElementById('dayName').textContent||'';
+    const greg=document.getElementById('gregorian').textContent||'';
+    const hij=document.getElementById('hijri').textContent||'';
+    const dayX=parseInt(document.getElementById('dayX').value||'0',10)||0;
+    const dayY=parseInt(document.getElementById('dayY').value||'0',10)||0;
+    const dateX=parseInt(document.getElementById('dateX').value||'0',10)||0;
+    const dateY=parseInt(document.getElementById('dateY').value||'0',10)||0;
+
+    // pill
+    const pillCx=0.5*cw + dayX;
+    const pillCy=0.123*ch + dayY;
+    const pillW=380, pillH=140, rr=pillH/2;
+    const x0=pillCx-pillW/2, y0=pillCy-pillH/2;
+
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,0.18)';
+    ctx.shadowBlur=18; ctx.shadowOffsetY=6;
+    ctx.fillStyle='#0f766e';
+    ctx.beginPath();
+    ctx.moveTo(x0+rr,y0);
+    ctx.arcTo(x0+pillW,y0,x0+pillW,y0+pillH,rr);
+    ctx.arcTo(x0+pillW,y0+pillH,x0,y0+pillH,rr);
+    ctx.arcTo(x0,y0+pillH,x0,y0,rr);
+    ctx.arcTo(x0,y0,x0+pillW,y0,rr);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.shadowColor='rgba(0,0,0,0.25)';
+    ctx.shadowBlur=10; ctx.shadowOffsetY=3;
+    ctx.fillStyle='#fff';
+    ctx.font='900 70px Tahoma, Arial, sans-serif';
+    ctx.fillText(dayText, pillCx, pillCy+2);
+
+    // date line
+    const sep=' | ';
+    ctx.font='900 54px Tahoma, Arial, sans-serif';
+    ctx.fillStyle='#fff';
+    ctx.shadowColor='rgba(0,0,0,0.35)';
+    ctx.shadowBlur=10;
+    const lineY=0.170*ch + dateY;
+    const centerX=0.5*cw + dateX;
+    const wGreg=ctx.measureText(greg).width;
+    const wSep=ctx.measureText(sep).width;
+    const wHij=ctx.measureText(hij).width;
+    const total=wGreg+wSep+wHij;
+    let startX=centerX-total/2;
+    ctx.textAlign='left';
+    ctx.fillText(greg,startX,lineY);
+    startX+=wGreg;
+    ctx.fillText(sep,startX,lineY);
+    startX+=wSep;
+    ctx.fillText(hij,startX,lineY);
+  }
+
+  // handle
+  const ht=(document.getElementById('handleText').value||'30300').trim();
+  const handle='@'+ht;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,0.25)';
+  ctx.shadowBlur=10; ctx.shadowOffsetY=3;
+  ctx.font='900 56px Tahoma, Arial, sans-serif';
+  ctx.lineWidth=5;
+  ctx.strokeStyle='#fff';
+  ctx.fillStyle='#0f766e';
+  ctx.strokeText(handle, 0.5*cw, 0.84*ch);
+  ctx.fillText(handle, 0.5*cw, 0.84*ch);
+
+  // download
+  const a=document.createElement('a');
+  a.href=canvas.toDataURL('image/png');
+  a.download='story-1080x1920.png';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast('تم حفظ PNG');
+}
+
+function toggleDate(){
+  const p=document.getElementById('preview');
+  p.classList.toggle('hidden-date');
+  localStorage.setItem('hideDate', p.classList.contains('hidden-date') ? '1':'0');
+}
+
+function togglePanel(){
+  const s=document.getElementById('sheet');
+  s.classList.toggle('collapsed');
+  localStorage.setItem('panelCollapsed', s.classList.contains('collapsed') ? '1':'0');
+}
+
+let targets=buildTargets();
+restore();
+setDates();
+apply();
+animateNumbers(targets);
+
+document.getElementById('btnToggle').addEventListener('click', ()=>{toggleDate();});
+document.getElementById('btnPanel').addEventListener('click', ()=>{togglePanel(); toast('تم تبديل الإعدادات');});
+document.getElementById('btnPNG').addEventListener('click', async ()=>{
+  targets=buildTargets();
+  setDates();
+  await renderAndDownloadPNG(targets);
+});
+
+['fill','stroke','offsetX','offsetY','dayX','dayY','dateX','dateY','handleText'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', ()=>{
+    apply();
+    toast('تم حفظ الإعدادات');
+  });
+});
+
+// PWA (offline)
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
